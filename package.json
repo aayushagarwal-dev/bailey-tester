@@ -1,0 +1,17 @@
+{
+  "name": "bailey-tester",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local WhatsApp/Baileys simulator for testing chat apps without using real WhatsApp.",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "multer": "^2.0.2",
+    "socket.io": "^4.8.1"
+  }
+}
