@@ -22,7 +22,7 @@ const ui = {
     messageText: '',
     messageTags: 'manual-test',
     messageNote: '',
-    testRunId: `manual-${new Date().toISOString().slice(0, 10)}`,
+    testRunId: '',
     chatName: '',
     chatTags: '',
     chatNotes: ''
@@ -203,7 +203,7 @@ function renderChat(chat) {
         </label>
         <label>
           <span>Test run</span>
-          <input class="input" name="testRunId" value="${escapeAttribute(ui.drafts.testRunId)}" placeholder="manual-001" />
+          <input class="input" name="testRunId" value="${escapeAttribute(ui.drafts.testRunId)}" placeholder="${escapeAttribute(defaultTestRunId())}" />
         </label>
       </div>
 
@@ -264,7 +264,7 @@ function renderMedia(media = []) {
           return `<a class="media-card image" href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer"><img src="${escapeAttribute(item.url)}" alt="${escapeAttribute(item.fileName)}" /><span>${escapeHtml(item.fileName)}</span></a>`;
         }
 
-        return `<a class="media-card" href="${escapeAttribute(item.url || '#')}" target="_blank" rel="noreferrer"><span class="file-icon">FILE</span><strong>${escapeHtml(item.fileName || 'media')}</strong><small>${escapeHtml(item.mimeType || 'file')}</small></a>`;
+        return `<a class="media-card" href="${escapeAttribute(item.url || '#')}" target="_blank" rel="noreferrer"><span class="file-icon">${escapeHtml(mediaTypeLabel(item))}</span><strong>${escapeHtml(item.fileName || 'media')}</strong><small>${escapeHtml(item.mimeType || 'file')}</small></a>`;
       }).join('')}
     </div>
   `;
@@ -388,13 +388,18 @@ function renderChatInspector(chat) {
 }
 
 function renderEvent(event) {
+  const payload = JSON.stringify(event.payload ?? {}, null, 2);
+  const payloadMarkup = payload.length > 1200
+    ? `<details class="event-payload"><summary>Payload (${payload.length.toLocaleString()} chars)</summary><pre>${escapeHtml(payload)}</pre></details>`
+    : `<pre>${escapeHtml(payload)}</pre>`;
+
   return `
     <article class="event ${event.level}">
       <div>
         <strong>${escapeHtml(event.type)}</strong>
         <time>${formatDateTime(event.createdAt)}</time>
       </div>
-      <pre>${escapeHtml(JSON.stringify(event.payload ?? {}, null, 2))}</pre>
+      ${payloadMarkup}
     </article>
   `;
 }
@@ -498,9 +503,13 @@ async function handleContactsFile(event) {
     return;
   }
 
-  const text = await file.text();
-  ui.drafts.bulkContacts = text;
-  await importContacts(parseContacts(text));
+  try {
+    const text = await file.text();
+    ui.drafts.bulkContacts = text;
+    await importContacts(parseContacts(text));
+  } finally {
+    event.target.value = '';
+  }
 }
 
 async function importContactsFromTextarea() {
@@ -519,7 +528,9 @@ async function importContacts(contacts) {
     render();
     let firstChatId = null;
 
-    for (const contact of contacts) {
+    for (const [index, contact] of contacts.entries()) {
+      setStatus(`Importing contact ${index + 1} of ${contacts.length}...`, 'neutral');
+      render();
       const chat = await api('/api/chats', {
         method: 'POST',
         body: contact
@@ -557,12 +568,14 @@ async function submitMessage(event) {
 
   const form = event.currentTarget;
   captureComposerDraft(event);
+  const testRunId = form.testRunId.value.trim() || defaultTestRunId();
+  ui.drafts.testRunId = testRunId;
 
   const formData = new FormData();
   formData.set('text', form.text.value);
   formData.set('tags', form.tags.value);
   formData.set('note', form.note.value);
-  formData.set('testRunId', form.testRunId.value);
+  formData.set('testRunId', testRunId);
 
   const files = document.querySelector('#media-input')?.files ?? [];
   for (const file of files) {
@@ -674,6 +687,25 @@ function getMessagesForChat(chatId) {
   return state.messages
     .filter((message) => message.chatId === chatId)
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+}
+
+function defaultTestRunId() {
+  return `manual-${new Date().toISOString().slice(0, 10)}`;
+}
+
+function mediaTypeLabel(item) {
+  const extension = (item.fileName || '').split('.').pop()?.toUpperCase();
+  if (extension && extension.length <= 4 && extension !== item.fileName?.toUpperCase()) {
+    return extension;
+  }
+
+  const [type, subtype = ''] = (item.mimeType || '').split('/');
+  const cleanSubtype = subtype.split(/[+;]/)[0].toUpperCase();
+  if (cleanSubtype && cleanSubtype.length <= 4) {
+    return cleanSubtype;
+  }
+
+  return (type || 'file').slice(0, 4).toUpperCase();
 }
 
 async function api(path, options = {}) {
