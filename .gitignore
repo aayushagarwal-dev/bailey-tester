@@ -3,4 +3,5 @@ data/state.json
 data/uploads/
 data/logs/
 .env
+*.log
 .DS_Store
